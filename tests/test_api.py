@@ -1,0 +1,168 @@
+from datetime import datetime, timedelta
+from io import BytesIO
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+import db
+from main import app
+from routers import api
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_FILE", tmp_path / "test.db")
+    monkeypatch.delenv("GOOGLE_CALENDAR_ICAL_URL", raising=False)
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def test_sleep_buttons_record_session_and_deficit(client):
+    dashboard = client.get("/")
+    assert dashboard.status_code == 200
+    assert "Sleep & Schedule Hub" in dashboard.text
+    assert client.get("/api/state").json()["state"] == "AWAKE"
+
+    night = client.post("/api/action/night").json()
+    assert night["state"] == "ASLEEP"
+
+    with db.get_db_connection() as conn:
+        start = (datetime.now() - timedelta(hours=5)).isoformat()
+        conn.execute(
+            "UPDATE sleep_state SET sleep_start_time = ? WHERE id = 1",
+            (start,),
+        )
+
+    morning = client.post("/api/action/morning").json()
+    assert morning["state"] == "AWAKE"
+    assert morning["log"]["duration_hours"] == pytest.approx(5, abs=0.02)
+    assert morning["log"]["deficit_hours"] == pytest.approx(2.5, abs=0.02)
+    assert len(client.get("/api/sleep-logs").json()) == 1
+
+
+def test_repeated_night_does_not_reset_sleep_start(client):
+    first = client.post("/api/action/night").json()["sleep_start"]
+    second = client.post("/api/action/night").json()["sleep_start"]
+    assert second == first
+
+
+def test_morning_while_awake_does_not_create_sleep_log(client):
+    response = client.post("/api/action/morning")
+    assert response.json()["log"] is None
+    assert client.get("/api/sleep-logs").json() == []
+
+
+def test_local_calendar_events_and_validation(client):
+    created = client.post(
+        "/api/events",
+        json={
+            "title": "Visible event",
+            "start_time": "2026-10-11T09:00:00",
+            "category": "personal",
+        },
+    )
+    assert created.status_code == 201
+    client.post(
+        "/api/events",
+        json={
+            "title": "Hidden event",
+            "start_time": "2026-10-11T10:00:00",
+            "is_secret": True,
+        },
+    )
+
+    default_events = client.get("/api/events").json()
+    assert [event["title"] for event in default_events] == ["Visible event"]
+    revealed_events = client.get("/api/events?show_secret=true").json()
+    assert {event["title"] for event in revealed_events} == {
+        "Visible event",
+        "🔒 Hidden event",
+    }
+
+    invalid = client.post(
+        "/api/events",
+        json={
+            "title": "Invalid range",
+            "start_time": "2026-10-11T10:00:00",
+            "end_time": "2026-10-11T09:00:00",
+        },
+    )
+    assert invalid.status_code == 422
+
+
+def test_google_calendar_feed_expands_recurring_events_and_masks_private_details(
+    client, monkeypatch
+):
+    feed = b"""BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Tests//Calendar Feed//EN
+BEGIN:VEVENT
+UID:private-event@example.test
+DTSTAMP:20261001T120000Z
+DTSTART:20261012T090000Z
+DTEND:20261012T100000Z
+RRULE:FREQ=DAILY;COUNT=2
+CLASS:PRIVATE
+SUMMARY:Personal appointment
+DESCRIPTION:Sensitive notes
+END:VEVENT
+BEGIN:VEVENT
+UID:all-day-event@example.test
+DTSTAMP:20261001T120000Z
+DTSTART;VALUE=DATE:20261013
+DTEND;VALUE=DATE:20261014
+SUMMARY:All-day event
+END:VEVENT
+END:VCALENDAR
+"""
+
+    class FeedResponse(BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            self.close()
+
+    monkeypatch.setenv(
+        "GOOGLE_CALENDAR_ICAL_URL",
+        "https://calendar.google.com/calendar/ical/private/basic.ics",
+    )
+    start = "2026-10-11T00:00:00+02:00"
+    end = "2026-10-15T00:00:00+02:00"
+    with patch.object(
+        api, "urlopen", side_effect=lambda *args, **kwargs: FeedResponse(feed)
+    ) as fetch_feed:
+        hidden = client.get(
+            "/api/events",
+            params={"start": start, "end": end},
+        )
+        assert hidden.status_code == 200
+        hidden_events = hidden.json()
+        assert len(hidden_events) == 3
+        private_events = [
+            event for event in hidden_events if event["extendedProps"]["is_secret"]
+        ]
+        assert len(private_events) == 2
+        assert all(event["title"] == "🔒 Private event" for event in private_events)
+        assert all(event["extendedProps"]["description"] == "" for event in private_events)
+        assert next(
+            event for event in hidden_events if event["title"] == "All-day event"
+        )["allDay"]
+        assert fetch_feed.call_args.args[0].startswith(
+            "https://calendar.google.com/"
+        )
+
+        revealed = client.get(
+            "/api/events",
+            params={"start": start, "end": end, "show_secret": "true"},
+        ).json()
+        assert len(revealed) == 3
+        assert sum(event["title"] == "Personal appointment" for event in revealed) == 2
+
+
+def test_google_calendar_feed_rejects_non_google_urls(client, monkeypatch):
+    monkeypatch.setenv("GOOGLE_CALENDAR_ICAL_URL", "https://example.com/calendar.ics")
+    response = client.get("/api/events")
+    assert response.status_code == 500
+    assert "calendar.google.com" in response.json()["detail"]
