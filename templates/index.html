@@ -63,6 +63,113 @@
             100% { transform: scale(0.95); opacity: 0.8; }
         }
         .pulse-active { animation: pulse-ring 3s infinite ease-in-out; }
+
+        @media (max-width: 640px) {
+            header > div {
+                height: 64px;
+                padding-left: 0.5rem;
+                padding-right: 0.5rem;
+            }
+            header h1 { font-size: 0.875rem; }
+            header p { display: none; }
+            header nav button { padding: 0.65rem; }
+            header nav button span { display: none; }
+            main {
+                display: flex;
+                flex-direction: column;
+                height: calc(100svh - 64px);
+                min-height: 0;
+                padding: 8px !important;
+                overflow-y: auto;
+            }
+            #page-presence {
+                flex: 1 1 auto;
+                height: 100%;
+                min-height: 0;
+                display: grid;
+                grid-template-rows: auto minmax(0, 1fr);
+                gap: 8px;
+            }
+            #page-schedule:not(.hidden) { flex: 0 0 auto; }
+            #page-presence.hidden,
+            #page-schedule.hidden { display: none; }
+            #page-presence > * + * { margin-top: 0; }
+            #page-presence > div:first-child {
+                display: block;
+                padding: 8px 12px;
+                border-radius: 12px;
+            }
+            #page-presence > div:first-child > div {
+                min-height: 44px;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 8px;
+            }
+            #status-icon-container {
+                width: 40px;
+                height: 40px;
+                flex: 0 0 40px;
+                border-radius: 12px;
+                font-size: 1rem;
+            }
+            #status-subtext,
+            #page-presence > div:first-child > div > div:last-child {
+                display: none;
+            }
+            #status-text { font-size: 1rem; }
+            #page-presence > .grid {
+                min-height: 0;
+                grid-template-rows: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+            }
+            .action-card {
+                min-height: 0;
+                padding: 12px;
+                border-radius: 14px;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .action-card-content {
+                flex: 0 0 auto;
+                display: grid;
+                grid-template-columns: 52px minmax(0, 1fr);
+                align-content: center;
+                align-items: center;
+                column-gap: 12px;
+                text-align: left;
+            }
+            .action-card-content > div {
+                width: 48px;
+                height: 48px;
+                margin: 0;
+                border-radius: 14px;
+                font-size: 1.25rem;
+                grid-column: 1;
+                grid-row: 1 / span 2;
+            }
+            .action-card-content h3 {
+                align-self: end;
+                margin: 0;
+                font-size: 1rem;
+                line-height: 1.25;
+            }
+            .action-card-content p {
+                grid-column: 2;
+                margin: 4px 0 0;
+                font-size: 0.75rem;
+                line-height: 1.35;
+            }
+            .action-button {
+                flex: 1 1 auto;
+                min-height: 0;
+                height: auto;
+                padding: 16px;
+                border-radius: 14px;
+                font-size: 1.5rem;
+            }
+            #calendar-feed-status { max-width: 100%; }
+        }
     </style>
 </head>
 <body class="bg-darkbg text-slate-100 min-h-screen flex flex-col font-sans antialiased">
@@ -82,12 +189,12 @@
 
             <!-- Tab Navigation Buttons -->
             <nav class="flex space-x-2 bg-slate-900/60 p-1 rounded-xl border border-bordercolor">
-                <button id="tab-btn-presence" onclick="switchTab('presence')" 
+                <button id="tab-btn-presence" aria-label="Action Center" title="Action Center" onclick="switchTab('presence')"
                     class="flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 bg-indigo-600 text-white shadow-md">
                     <i class="fa-solid fa-bed text-sm"></i>
                     <span>Action Center</span>
                 </button>
-                <button id="tab-btn-schedule" onclick="switchTab('schedule')" 
+                <button id="tab-btn-schedule" aria-label="Schedule & Events" title="Schedule & Events" onclick="switchTab('schedule')"
                     class="flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg text-slate-400 hover:text-white transition-all duration-200">
                     <i class="fa-solid fa-calendar-days text-sm"></i>
                     <span>Schedule & Events</span>
@@ -132,77 +239,59 @@
                 </div>
             </div>
 
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-6 shadow-xl">
+                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Target IP availability</p>
+                        <h2 class="text-xl font-bold text-white mt-1">Network Status</h2>
+                        <p id="network-status-subtext" class="text-sm text-slate-400 mt-1">Waiting for ESP32 status report...</p>
+                    </div>
+                    <span id="network-status-badge" class="self-start px-3 py-1 text-sm font-bold rounded-full bg-slate-700/50 text-slate-300 border border-slate-600">UNKNOWN</span>
+                </div>
+                <ul id="network-target-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-4" aria-live="polite"></ul>
+            </div>
+
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 
                 <!-- Good Night Button Trigger -->
-                <div class="bg-cardbg border border-bordercolor rounded-2xl p-8 flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden group hover:border-purple-500/50 transition duration-300">
+                <div class="action-card bg-cardbg border border-bordercolor rounded-2xl p-8 flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden group hover:border-purple-500/50 transition duration-300">
                     <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-purple-600/10 rounded-full blur-3xl group-hover:bg-purple-600/20 transition"></div>
                     
-                    <div class="w-20 h-20 bg-purple-500/10 text-purple-400 rounded-3xl flex items-center justify-center text-3xl mb-6 border border-purple-500/20 group-hover:scale-110 transition duration-300">
-                        <i class="fa-solid fa-moon"></i>
+                    <div class="action-card-content">
+                        <div class="w-20 h-20 bg-purple-500/10 text-purple-400 rounded-3xl flex items-center justify-center text-3xl mb-6 border border-purple-500/20 group-hover:scale-110 transition duration-300">
+                            <i class="fa-solid fa-moon"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-2">Retire for the Night</h3>
+                        <p class="text-sm text-slate-400 mb-8 max-w-sm">Log bedtime start timestamp and transition ESP32-C3 presence monitoring to nocturnal mode.</p>
                     </div>
                     
-                    <h3 class="text-2xl font-bold text-white mb-2">Retire for the Night</h3>
-                    <p class="text-sm text-slate-400 mb-8 max-w-sm">Log bedtime start timestamp and transition ESP32-C3 presence monitoring to nocturnal mode.</p>
-                    
                     <button onclick="triggerNight()" 
-                        class="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-lg shadow-lg shadow-purple-600/30 active:scale-95 transition-all duration-200 flex items-center justify-center space-x-3">
+                        class="action-button w-full py-4 px-6 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-lg shadow-lg shadow-purple-600/30 active:scale-95 transition-all duration-200 flex items-center justify-center space-x-3">
                         <i class="fa-solid fa-bed"></i>
                         <span>Nighty Night</span>
                     </button>
                 </div>
 
                 <!-- Good Morning Button Trigger -->
-                <div class="bg-cardbg border border-bordercolor rounded-2xl p-8 flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden group hover:border-amber-500/50 transition duration-300">
+                <div class="action-card bg-cardbg border border-bordercolor rounded-2xl p-8 flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden group hover:border-amber-500/50 transition duration-300">
                     <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-amber-600/10 rounded-full blur-3xl group-hover:bg-amber-600/20 transition"></div>
                     
-                    <div class="w-20 h-20 bg-amber-500/10 text-amber-400 rounded-3xl flex items-center justify-center text-3xl mb-6 border border-amber-500/20 group-hover:scale-110 transition duration-300">
-                        <i class="fa-solid fa-sun"></i>
+                    <div class="action-card-content">
+                        <div class="w-20 h-20 bg-amber-500/10 text-amber-400 rounded-3xl flex items-center justify-center text-3xl mb-6 border border-amber-500/20 group-hover:scale-110 transition duration-300">
+                            <i class="fa-solid fa-sun"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-white mb-2">Wake Up & Start Day</h3>
+                        <p class="text-sm text-slate-400 mb-8 max-w-sm">Stop the sleep timer, calculate sleep duration, and measure the deficit against your 7.5-hour target.</p>
                     </div>
                     
-                    <h3 class="text-2xl font-bold text-white mb-2">Wake Up & Start Day</h3>
-                    <p class="text-sm text-slate-400 mb-8 max-w-sm">Stop the sleep timer, calculate sleep duration, and measure the deficit against your 7.5-hour target.</p>
-                    
                     <button onclick="triggerMorning()" 
-                        class="w-full py-4 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-bold text-lg shadow-lg shadow-amber-500/30 active:scale-95 transition-all duration-200 flex items-center justify-center space-x-3">
+                        class="action-button w-full py-4 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-bold text-lg shadow-lg shadow-amber-500/30 active:scale-95 transition-all duration-200 flex items-center justify-center space-x-3">
                         <i class="fa-solid fa-mug-hot"></i>
                         <span>Good Morning</span>
                     </button>
                 </div>
             </div>
 
-            <!-- Deficit History Table -->
-            <div class="bg-cardbg border border-bordercolor rounded-2xl shadow-xl overflow-hidden">
-                <div class="p-6 border-b border-bordercolor flex items-center justify-between">
-                    <div>
-                        <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                            <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i>
-                            Recent Sleep Sessions
-                        </h3>
-                        <p class="text-xs text-slate-400 mt-1">Recorded sleep duration and remaining deficit against your 7.5-hour target</p>
-                    </div>
-                    <button onclick="fetchSleepLogs()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-bordercolor transition">
-                        <i class="fa-solid fa-arrows-rotate mr-1"></i> Refresh
-                    </button>
-                </div>
-                
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-900/60 text-slate-400 text-xs font-semibold uppercase tracking-wider border-b border-bordercolor">
-                                <th class="py-3 px-6">Timestamp</th>
-                                <th class="py-3 px-6">Bedtime</th>
-                                <th class="py-3 px-6">Wake Time</th>
-                                <th class="py-3 px-6">Total Duration</th>
-                                <th class="py-3 px-6">Deficit</th>
-                            </tr>
-                        </thead>
-                        <tbody id="deficit-table-body" class="divide-y divide-bordercolor text-sm text-slate-300">
-                            <!-- Populated dynamically -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
         </section>
 
 
@@ -217,6 +306,7 @@
                         Master Schedule & Secret Integration
                     </h2>
                     <p class="text-xs text-slate-400 mt-1">Local appointments and your Google Calendar feed; private event details are hidden until revealed</p>
+                    <p id="calendar-feed-status" class="text-xs text-slate-400 mt-2" role="status" aria-live="polite"></p>
                 </div>
 
                 <div class="flex items-center space-x-3 w-full md:w-auto">
@@ -407,6 +497,49 @@
             }
         }
 
+        async function fetchNetworkStatus() {
+            const subtext = document.getElementById('network-status-subtext');
+            const badge = document.getElementById('network-status-badge');
+            const targetList = document.getElementById('network-target-list');
+            try {
+                const response = await fetch('/api/network-status');
+                if (!response.ok) throw new Error(`Status request failed (${response.status})`);
+                const data = await response.json();
+                const isOnline = data.status === 'ON';
+                badge.innerText = data.status;
+                badge.className = isOnline
+                    ? "self-start px-3 py-1 text-sm font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                    : data.status === 'OFF'
+                        ? "self-start px-3 py-1 text-sm font-bold rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                        : "self-start px-3 py-1 text-sm font-bold rounded-full bg-slate-700/50 text-slate-300 border border-slate-600";
+
+                if (data.status === 'UNKNOWN') {
+                    subtext.innerText = 'Waiting for ESP32 status report...';
+                } else {
+                    const onlineCount = data.targets.filter(target => target.online).length;
+                    subtext.innerText = `${onlineCount} of ${data.targets.length} targets online` +
+                        (data.updated_at ? ` · Last checked ${new Date(data.updated_at).toLocaleString()}` : '');
+                }
+
+                targetList.replaceChildren();
+                for (const target of data.targets) {
+                    const item = document.createElement('li');
+                    item.className = 'flex items-center justify-between gap-3 rounded-lg bg-slate-900/70 border border-bordercolor px-3 py-2 text-sm';
+                    const address = document.createElement('span');
+                    address.className = 'font-mono text-slate-200';
+                    address.textContent = target.ip;
+                    const status = document.createElement('span');
+                    status.className = target.online ? 'text-emerald-400' : 'text-rose-400';
+                    status.textContent = target.online ? 'Online' : 'Offline';
+                    item.append(address, status);
+                    targetList.append(item);
+                }
+            } catch (error) {
+                console.error('Network status request error:', error);
+                subtext.innerText = `Network status unavailable: ${error.message}`;
+            }
+        }
+
         function updateUIState(state, sleepStartTime) {
             const iconContainer = document.getElementById('status-icon-container');
             const icon = document.getElementById('status-icon');
@@ -451,39 +584,8 @@
                 const res = await fetch('/api/action/morning', { method: 'POST' });
                 const data = await res.json();
                 updateUIState(data.state, null);
-                fetchSleepLogs();
             } catch (e) {
                 console.error("Morning trigger error:", e);
-            }
-        }
-
-        // Fetch and Render Deficit Logs Table
-        async function fetchSleepLogs() {
-            try {
-                const res = await fetch('/api/sleep-logs');
-                const logs = await res.json();
-                const tbody = document.getElementById('deficit-table-body');
-                tbody.innerHTML = '';
-
-                if (logs.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="5" class="py-6 px-6 text-center text-slate-500 italic">No sleep deficits logged yet. Great sleep health!</td></tr>`;
-                    return;
-                }
-
-                logs.forEach(log => {
-                    const tr = document.createElement('tr');
-                    tr.className = "hover:bg-slate-800/50 transition";
-                    tr.innerHTML = `
-                        <td class="py-3 px-6 text-slate-300">${new Date(log.timestamp).toLocaleString()}</td>
-                        <td class="py-3 px-6 text-slate-400">${new Date(log.sleep_start).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
-                        <td class="py-3 px-6 text-slate-400">${new Date(log.wake_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
-                        <td class="py-3 px-6 font-semibold text-indigo-400">${log.duration_hours} hrs</td>
-                        <td class="py-3 px-6 font-bold text-amber-400">+${log.deficit_hours} hrs deficit</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            } catch (e) {
-                console.error("Error fetching logs:", e);
             }
         }
 
@@ -546,12 +648,26 @@
         // FullCalendar Setup and Secret Integration
         function initCalendar() {
             const calendarEl = document.getElementById('calendar');
+            const isPhone = window.matchMedia('(max-width: 640px)').matches;
+            const initialDate = new Date();
+            if (isPhone) initialDate.setDate(initialDate.getDate() - 1);
             calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: 'dayGridMonth',
+                initialView: isPhone ? 'timeGridThreeDay' : 'dayGridMonth',
+                initialDate,
                 headerToolbar: {
                     left: 'prev,next today',
                     center: 'title',
-                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                    right: isPhone
+                        ? 'timeGridThreeDay,timeGridDay'
+                        : 'dayGridMonth,timeGridThreeDay,timeGridDay'
+                },
+                views: {
+                    timeGridThreeDay: {
+                        type: 'timeGrid',
+                        duration: { days: 3 },
+                        dateIncrement: { days: 1 },
+                        buttonText: '3 days'
+                    }
                 },
                 events: function(fetchInfo, successCallback, failureCallback) {
                     const params = new URLSearchParams({
@@ -559,13 +675,25 @@
                         end: fetchInfo.endStr,
                         show_secret: String(showSecretEvents)
                     });
+                    const status = document.getElementById('calendar-feed-status');
+                    status.innerText = 'Loading calendar events...';
                     fetch(`/api/events?${params}`)
                         .then(res => {
-                            if (!res.ok) throw new Error(`Calendar request failed (${res.status})`);
+                            if (!res.ok) {
+                                return res.json().then(error => {
+                                    throw new Error(error.detail || `Calendar request failed (${res.status})`);
+                                });
+                            }
+                            status.innerText = res.headers.get('X-Google-Calendar-Configured') === 'true'
+                                ? 'Google Calendar connected.'
+                                : 'Google Calendar is not configured. Set GOOGLE_CALENDAR_ICAL_URL in the app environment.';
                             return res.json();
                         })
                         .then(data => successCallback(data))
-                        .catch(err => failureCallback(err));
+                        .catch(err => {
+                            status.innerText = `Calendar could not load: ${err.message}`;
+                            failureCallback(err);
+                        });
                 },
                 eventClick: function(info) {
                     selectedEventId = info.event.id;
@@ -672,7 +800,8 @@
         // Initializer on Page Load
         window.addEventListener('DOMContentLoaded', () => {
             fetchCurrentState();
-            fetchSleepLogs();
+            fetchNetworkStatus();
+            window.setInterval(fetchNetworkStatus, 15000);
         });
     </script>
 </body>

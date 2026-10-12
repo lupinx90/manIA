@@ -1,21 +1,64 @@
+import json
 import logging
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
 import recurring_ical_events
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from icalendar import Calendar
 
 from db import get_db_connection
-from schemas import EventCreate
+from schemas import EventCreate, NetworkStatusReport
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 MIN_DESIRED_SLEEP_HOURS = 7.5
 CALENDAR_FEED_TIMEOUT_SECONDS = 10
+
+
+@router.get("/api/network-status")
+def get_network_status():
+    with get_db_connection() as conn:
+        row = conn.execute(
+            "SELECT online, targets_json, updated_at FROM network_status WHERE id = 1"
+        ).fetchone()
+    if row is None:
+        return {
+            "status": "UNKNOWN",
+            "online": None,
+            "targets": [],
+            "updated_at": None,
+        }
+    return {
+        "status": "ON" if row["online"] else "OFF",
+        "online": bool(row["online"]),
+        "targets": json.loads(row["targets_json"]),
+        "updated_at": row["updated_at"],
+    }
+
+
+@router.post("/api/network-status")
+def report_network_status(report: NetworkStatusReport):
+    targets = [target.model_dump(mode="json") for target in report.targets]
+    online = any(target["online"] for target in targets)
+    updated_at = datetime.now(timezone.utc).isoformat()
+    with get_db_connection() as conn:
+        conn.execute(
+            "INSERT INTO network_status (id, online, targets_json, updated_at) "
+            "VALUES (1, ?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET online = excluded.online, "
+            "targets_json = excluded.targets_json, updated_at = excluded.updated_at",
+            (int(online), json.dumps(targets), updated_at),
+        )
+    return {
+        "status": "ON" if online else "OFF",
+        "online": online,
+        "targets": targets,
+        "updated_at": updated_at,
+    }
 
 
 def _fetch_google_calendar_events(start: datetime, end: datetime, show_secret: bool):
@@ -169,10 +212,14 @@ def get_sleep_logs():
 
 @router.get("/api/events")
 def get_events(
+    response: Response,
     start: datetime | None = Query(default=None),
     end: datetime | None = Query(default=None),
     show_secret: bool = Query(default=False),
 ):
+    response.headers["X-Google-Calendar-Configured"] = str(
+        bool(os.getenv("GOOGLE_CALENDAR_ICAL_URL"))
+    ).lower()
     range_start = start or (datetime.now() - timedelta(days=31))
     range_end = end or (datetime.now() + timedelta(days=366))
     if (range_start.utcoffset() is None) != (range_end.utcoffset() is None):
