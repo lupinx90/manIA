@@ -39,6 +39,14 @@ def init_db():
                 is_secret INTEGER DEFAULT 0
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS network_status (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                online INTEGER NOT NULL,
+                targets_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
         conn.execute(
             "INSERT OR IGNORE INTO sleep_state (id, state, sleep_start_time, last_updated) "
             "VALUES (1, 'AWAKE', NULL, ?)",

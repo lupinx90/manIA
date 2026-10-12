@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -8,7 +9,10 @@ from fastapi.templating import Jinja2Templates
 from db import init_db
 from routers import api
 
-templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
 @asynccontextmanager

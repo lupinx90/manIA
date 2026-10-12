@@ -1,6 +1,16 @@
 from datetime import datetime
+from ipaddress import IPv4Address
 
 from pydantic import BaseModel, Field, model_validator
+
+
+class NetworkTargetStatus(BaseModel):
+    ip: IPv4Address
+    online: bool
+
+
+class NetworkStatusReport(BaseModel):
+    targets: list[NetworkTargetStatus] = Field(max_length=64)
 
 
 class EventCreate(BaseModel):

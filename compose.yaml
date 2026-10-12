@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${MANIA_BIND_ADDRESS:-127.0.0.1}:8000:8000"
     environment:
       DB_FILE: /data/system_hub.db
       GOOGLE_CALENDAR_ICAL_URL: ${GOOGLE_CALENDAR_ICAL_URL:-}

@@ -3,3 +3,5 @@
 __pycache__/
 .pytest_cache/
 system_hub.db
+/esp32_status_monitor/.pio/
+/esp32_status_monitor/include/secrets.h

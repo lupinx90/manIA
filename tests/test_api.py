@@ -22,6 +22,7 @@ def test_sleep_buttons_record_session_and_deficit(client):
     dashboard = client.get("/")
     assert dashboard.status_code == 200
     assert "Sleep & Schedule Hub" in dashboard.text
+    assert "Network Status" in dashboard.text
     assert client.get("/api/state").json()["state"] == "AWAKE"
 
     night = client.post("/api/action/night").json()
@@ -53,6 +54,58 @@ def test_morning_while_awake_does_not_create_sleep_log(client):
     assert client.get("/api/sleep-logs").json() == []
 
 
+def test_network_status_is_on_when_any_target_is_online(client):
+    unknown = client.get("/api/network-status")
+    assert unknown.status_code == 200
+    assert unknown.json() == {
+        "status": "UNKNOWN",
+        "online": None,
+        "targets": [],
+        "updated_at": None,
+    }
+
+    report = client.post(
+        "/api/network-status",
+        json={
+            "targets": [
+                {"ip": "192.168.1.10", "online": False},
+                {"ip": "192.168.1.11", "online": True},
+            ],
+        },
+    )
+    assert report.status_code == 200
+    assert report.json()["status"] == "ON"
+    assert report.json()["online"] is True
+
+    status = client.get("/api/network-status").json()
+    assert status["status"] == "ON"
+    assert status["targets"] == [
+        {"ip": "192.168.1.10", "online": False},
+        {"ip": "192.168.1.11", "online": True},
+    ]
+    assert status["updated_at"] is not None
+
+
+def test_network_status_is_off_when_no_targets_are_online(client):
+    response = client.post(
+        "/api/network-status",
+        json={"targets": [{"ip": "192.168.1.10", "online": False}]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "OFF"
+    assert response.json()["online"] is False
+
+
+def test_network_status_rejects_invalid_ip_addresses(client):
+    response = client.post(
+        "/api/network-status",
+        json={"targets": [{"ip": "router.local", "online": True}]},
+    )
+
+    assert response.status_code == 422
+
+
 def test_local_calendar_events_and_validation(client):
     created = client.post(
         "/api/events",
@@ -74,6 +127,7 @@ def test_local_calendar_events_and_validation(client):
 
     default_events = client.get("/api/events").json()
     assert [event["title"] for event in default_events] == ["Visible event"]
+    assert client.get("/api/events").headers["x-google-calendar-configured"] == "false"
     revealed_events = client.get("/api/events?show_secret=true").json()
     assert {event["title"] for event in revealed_events} == {
         "Visible event",
@@ -138,6 +192,7 @@ END:VCALENDAR
             params={"start": start, "end": end},
         )
         assert hidden.status_code == 200
+        assert hidden.headers["x-google-calendar-configured"] == "true"
         hidden_events = hidden.json()
         assert len(hidden_events) == 3
         private_events = [
