@@ -22,7 +22,12 @@ def test_sleep_buttons_record_session_and_deficit(client):
     dashboard = client.get("/")
     assert dashboard.status_code == 200
     assert "Sleep & Schedule Hub" in dashboard.text
-    assert "Network Status" in dashboard.text
+    assert "Target IP availability" not in dashboard.text
+    assert "Last 6 Days" in dashboard.text
+    assert 'aria-label="Nighty Night"' in dashboard.text
+    assert 'aria-label="Good Morning"' in dashboard.text
+    assert "Log bedtime start timestamp" not in dashboard.text
+    assert "Stop the sleep timer" not in dashboard.text
     assert client.get("/api/state").json()["state"] == "AWAKE"
 
     night = client.post("/api/action/night").json()
@@ -40,6 +45,55 @@ def test_sleep_buttons_record_session_and_deficit(client):
     assert morning["log"]["duration_hours"] == pytest.approx(5, abs=0.02)
     assert morning["log"]["deficit_hours"] == pytest.approx(2.5, abs=0.02)
     assert len(client.get("/api/sleep-logs").json()) == 1
+
+
+def test_sleep_summary_covers_last_six_days_and_aggregates_daily_logs(client):
+    today = datetime.now().date()
+    first_day = today - timedelta(days=5)
+    with db.get_db_connection() as conn:
+        for wake_date, duration in (
+            (today - timedelta(days=1), 4.0),
+            (today - timedelta(days=1), 2.0),
+            (today - timedelta(days=2), 8.0),
+            (today - timedelta(days=5), 7.5),
+            (today - timedelta(days=6), 9.0),
+            (today + timedelta(days=1), 9.0),
+        ):
+            wake_time = datetime.combine(wake_date, datetime.min.time()).isoformat()
+            conn.execute(
+                "INSERT INTO sleep_logs "
+                "(sleep_start, wake_time, duration_hours, deficit_hours, timestamp) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (wake_time, wake_time, duration, 0, wake_time),
+            )
+
+    response = client.get("/api/sleep-summary")
+    assert response.status_code == 200
+    summary = response.json()
+    assert len(summary["days"]) == 6
+    assert summary["days"][0]["date"] == first_day.isoformat()
+    assert summary["days"][-1]["date"] == today.isoformat()
+    assert summary["days"][-2]["sleep_hours"] == 6.0
+    assert summary["days"][-2]["deficit_hours"] == 1.5
+    assert summary["days"][-3]["sleep_hours"] == 8.0
+    assert summary["days"][-3]["goal_met"] is True
+    assert summary["days"][0]["sleep_hours"] == 7.5
+    assert summary["days"][0]["goal_met"] is True
+    assert summary["days"][-4]["sleep_hours"] is None
+    assert summary["tracked_days"] == 3
+    assert summary["goal_met_days"] == 2
+    assert summary["average_sleep_hours"] == 7.17
+    assert summary["total_deficit_hours"] == 1.5
+
+
+def test_sleep_summary_handles_no_recorded_sleep(client):
+    summary = client.get("/api/sleep-summary").json()
+
+    assert summary["average_sleep_hours"] is None
+    assert summary["goal_met_days"] == 0
+    assert summary["tracked_days"] == 0
+    assert summary["total_deficit_hours"] == 0
+    assert all(day["sleep_hours"] is None for day in summary["days"])
 
 
 def test_repeated_night_does_not_reset_sleep_start(client):

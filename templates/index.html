@@ -64,6 +64,8 @@
         }
         .pulse-active { animation: pulse-ring 3s infinite ease-in-out; }
 
+        .action-button { min-height: 26rem; }
+
         @media (max-width: 640px) {
             header > div {
                 height: 64px;
@@ -122,50 +124,9 @@
                 grid-template-rows: repeat(2, minmax(0, 1fr));
                 gap: 8px;
             }
-            .action-card {
-                min-height: 0;
-                padding: 12px;
-                border-radius: 14px;
-                display: flex;
-                flex-direction: column;
-                gap: 8px;
-            }
-            .action-card-content {
-                flex: 0 0 auto;
-                display: grid;
-                grid-template-columns: 52px minmax(0, 1fr);
-                align-content: center;
-                align-items: center;
-                column-gap: 12px;
-                text-align: left;
-            }
-            .action-card-content > div {
-                width: 48px;
-                height: 48px;
-                margin: 0;
-                border-radius: 14px;
-                font-size: 1.25rem;
-                grid-column: 1;
-                grid-row: 1 / span 2;
-            }
-            .action-card-content h3 {
-                align-self: end;
-                margin: 0;
-                font-size: 1rem;
-                line-height: 1.25;
-            }
-            .action-card-content p {
-                grid-column: 2;
-                margin: 4px 0 0;
-                font-size: 0.75rem;
-                line-height: 1.35;
-            }
             .action-button {
-                flex: 1 1 auto;
-                min-height: 0;
-                height: auto;
+                min-height: 10rem;
                 padding: 16px;
-                border-radius: 14px;
                 font-size: 1.5rem;
             }
             #calendar-feed-status { max-width: 100%; }
@@ -252,45 +213,46 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                
-                <!-- Good Night Button Trigger -->
-                <div class="action-card bg-cardbg border border-bordercolor rounded-2xl p-8 flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden group hover:border-purple-500/50 transition duration-300">
-                    <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-purple-600/10 rounded-full blur-3xl group-hover:bg-purple-600/20 transition"></div>
-                    
-                    <div class="action-card-content">
-                        <div class="w-20 h-20 bg-purple-500/10 text-purple-400 rounded-3xl flex items-center justify-center text-3xl mb-6 border border-purple-500/20 group-hover:scale-110 transition duration-300">
-                            <i class="fa-solid fa-moon"></i>
-                        </div>
-                        <h3 class="text-2xl font-bold text-white mb-2">Retire for the Night</h3>
-                        <p class="text-sm text-slate-400 mb-8 max-w-sm">Log bedtime start timestamp and transition ESP32-C3 presence monitoring to nocturnal mode.</p>
-                    </div>
-                    
-                    <button onclick="triggerNight()" 
-                        class="action-button w-full py-4 px-6 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-lg shadow-lg shadow-purple-600/30 active:scale-95 transition-all duration-200 flex items-center justify-center space-x-3">
-                        <i class="fa-solid fa-bed"></i>
-                        <span>Nighty Night</span>
-                    </button>
-                </div>
+                <button onclick="triggerNight()" aria-label="Nighty Night" title="Nighty Night"
+                    class="action-button w-full rounded-2xl border border-purple-400/30 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-2xl shadow-purple-600/30 active:scale-[0.99] transition-all duration-200 flex items-center justify-center">
+                    <i class="fa-solid fa-bed text-7xl" aria-hidden="true"></i>
+                </button>
 
-                <!-- Good Morning Button Trigger -->
-                <div class="action-card bg-cardbg border border-bordercolor rounded-2xl p-8 flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden group hover:border-amber-500/50 transition duration-300">
-                    <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-amber-600/10 rounded-full blur-3xl group-hover:bg-amber-600/20 transition"></div>
-                    
-                    <div class="action-card-content">
-                        <div class="w-20 h-20 bg-amber-500/10 text-amber-400 rounded-3xl flex items-center justify-center text-3xl mb-6 border border-amber-500/20 group-hover:scale-110 transition duration-300">
-                            <i class="fa-solid fa-sun"></i>
-                        </div>
-                        <h3 class="text-2xl font-bold text-white mb-2">Wake Up & Start Day</h3>
-                        <p class="text-sm text-slate-400 mb-8 max-w-sm">Stop the sleep timer, calculate sleep duration, and measure the deficit against your 7.5-hour target.</p>
-                    </div>
-                    
-                    <button onclick="triggerMorning()" 
-                        class="action-button w-full py-4 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-bold text-lg shadow-lg shadow-amber-500/30 active:scale-95 transition-all duration-200 flex items-center justify-center space-x-3">
-                        <i class="fa-solid fa-mug-hot"></i>
-                        <span>Good Morning</span>
-                    </button>
-                </div>
+                <button onclick="triggerMorning()" aria-label="Good Morning" title="Good Morning"
+                    class="action-button w-full rounded-2xl border border-amber-400/30 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white shadow-2xl shadow-amber-500/30 active:scale-[0.99] transition-all duration-200 flex items-center justify-center">
+                    <i class="fa-solid fa-mug-hot text-7xl" aria-hidden="true"></i>
+                </button>
             </div>
+
+            <section class="bg-cardbg border border-bordercolor rounded-2xl p-6 shadow-xl" aria-labelledby="sleep-summary-title">
+                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Recent sleep</p>
+                        <h2 id="sleep-summary-title" class="text-xl font-bold text-white mt-1">Last 6 Days</h2>
+                        <p class="text-sm text-slate-400 mt-1">Sleep duration by wake-up date, measured against your 7.5-hour goal.</p>
+                    </div>
+                    <p id="sleep-summary-status" class="text-sm text-slate-400" role="status" aria-live="polite">Loading sleep summary...</p>
+                </div>
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+                    <div class="rounded-xl bg-slate-900/70 border border-bordercolor p-4">
+                        <p class="text-xs text-slate-400">Average sleep</p>
+                        <p id="sleep-average" class="text-xl font-bold text-white mt-1">—</p>
+                    </div>
+                    <div class="rounded-xl bg-slate-900/70 border border-bordercolor p-4">
+                        <p class="text-xs text-slate-400">Days at goal</p>
+                        <p id="sleep-goal-days" class="text-xl font-bold text-white mt-1">—</p>
+                    </div>
+                    <div class="rounded-xl bg-slate-900/70 border border-bordercolor p-4">
+                        <p class="text-xs text-slate-400">Tracked days</p>
+                        <p id="sleep-tracked-days" class="text-xl font-bold text-white mt-1">—</p>
+                    </div>
+                    <div class="rounded-xl bg-slate-900/70 border border-bordercolor p-4">
+                        <p class="text-xs text-slate-400">Total sleep deficit</p>
+                        <p id="sleep-total-deficit" class="text-xl font-bold text-white mt-1">—</p>
+                    </div>
+                </div>
+                <div id="sleep-daily-summary" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-5" aria-label="Daily sleep durations"></div>
+            </section>
 
         </section>
 
@@ -497,46 +459,47 @@
             }
         }
 
-        async function fetchNetworkStatus() {
-            const subtext = document.getElementById('network-status-subtext');
-            const badge = document.getElementById('network-status-badge');
-            const targetList = document.getElementById('network-target-list');
+        async function fetchSleepSummary() {
+            const status = document.getElementById('sleep-summary-status');
+            const dailySummary = document.getElementById('sleep-daily-summary');
             try {
-                const response = await fetch('/api/network-status');
-                if (!response.ok) throw new Error(`Status request failed (${response.status})`);
+                const response = await fetch('/api/sleep-summary');
+                if (!response.ok) throw new Error(`Summary request failed (${response.status})`);
                 const data = await response.json();
-                const isOnline = data.status === 'ON';
-                badge.innerText = data.status;
-                badge.className = isOnline
-                    ? "self-start px-3 py-1 text-sm font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                    : data.status === 'OFF'
-                        ? "self-start px-3 py-1 text-sm font-bold rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30"
-                        : "self-start px-3 py-1 text-sm font-bold rounded-full bg-slate-700/50 text-slate-300 border border-slate-600";
 
-                if (data.status === 'UNKNOWN') {
-                    subtext.innerText = 'Waiting for ESP32 status report...';
-                } else {
-                    const onlineCount = data.targets.filter(target => target.online).length;
-                    subtext.innerText = `${onlineCount} of ${data.targets.length} targets online` +
-                        (data.updated_at ? ` · Last checked ${new Date(data.updated_at).toLocaleString()}` : '');
-                }
+                document.getElementById('sleep-average').innerText =
+                    data.average_sleep_hours === null ? 'No data' : `${data.average_sleep_hours.toFixed(1)} h`;
+                document.getElementById('sleep-goal-days').innerText = `${data.goal_met_days} / ${data.days.length}`;
+                document.getElementById('sleep-tracked-days').innerText = `${data.tracked_days} / ${data.days.length}`;
+                document.getElementById('sleep-total-deficit').innerText = `${data.total_deficit_hours.toFixed(1)} h`;
 
-                targetList.replaceChildren();
-                for (const target of data.targets) {
-                    const item = document.createElement('li');
-                    item.className = 'flex items-center justify-between gap-3 rounded-lg bg-slate-900/70 border border-bordercolor px-3 py-2 text-sm';
-                    const address = document.createElement('span');
-                    address.className = 'font-mono text-slate-200';
-                    address.textContent = target.ip;
-                    const status = document.createElement('span');
-                    status.className = target.online ? 'text-emerald-400' : 'text-rose-400';
-                    status.textContent = target.online ? 'Online' : 'Offline';
-                    item.append(address, status);
-                    targetList.append(item);
+                dailySummary.replaceChildren();
+                for (const day of data.days) {
+                    const item = document.createElement('div');
+                    item.className = 'min-w-0 rounded-lg bg-slate-900/70 border border-bordercolor p-3';
+                    const date = document.createElement('p');
+                    date.className = 'text-xs text-slate-400';
+                    date.textContent = new Date(`${day.date}T00:00:00`).toLocaleDateString([], {
+                        month: 'short', day: 'numeric'
+                    });
+                    const value = document.createElement('p');
+                    value.className = 'text-sm font-semibold text-white mt-2';
+                    value.textContent = day.sleep_hours === null ? 'No log' : `${day.sleep_hours.toFixed(1)} h`;
+                    const track = document.createElement('div');
+                    track.className = 'h-1.5 bg-slate-700 rounded-full mt-3 overflow-hidden';
+                    const bar = document.createElement('div');
+                    bar.className = `h-full rounded-full ${day.goal_met ? 'bg-emerald-400' : 'bg-indigo-400'}`;
+                    bar.style.width = day.sleep_hours === null
+                        ? '0%'
+                        : `${Math.min(day.sleep_hours / 10 * 100, 100)}%`;
+                    track.append(bar);
+                    item.append(date, value, track);
+                    dailySummary.append(item);
                 }
+                status.innerText = `${data.tracked_days} of ${data.days.length} days recorded`;
             } catch (error) {
-                console.error('Network status request error:', error);
-                subtext.innerText = `Network status unavailable: ${error.message}`;
+                console.error('Sleep summary request error:', error);
+                status.innerText = `Sleep summary unavailable: ${error.message}`;
             }
         }
 
@@ -584,6 +547,7 @@
                 const res = await fetch('/api/action/morning', { method: 'POST' });
                 const data = await res.json();
                 updateUIState(data.state, null);
+                if (data.log) await fetchSleepSummary();
             } catch (e) {
                 console.error("Morning trigger error:", e);
             }
@@ -800,8 +764,7 @@
         // Initializer on Page Load
         window.addEventListener('DOMContentLoaded', () => {
             fetchCurrentState();
-            fetchNetworkStatus();
-            window.setInterval(fetchNetworkStatus, 15000);
+            fetchSleepSummary();
         });
     </script>
 </body>
