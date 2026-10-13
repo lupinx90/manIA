@@ -390,6 +390,7 @@
         let recognition = null;
         let isListening = false;
         const NETWORK_STATUS_POLL_INTERVAL_MS = 10000;
+        const SLEEP_LOGS_POLL_INTERVAL_MS = 10000;
 
         // Sound Effects via Web Audio API (No external asset dependencies)
         function playAudioFeedback(type) {
@@ -821,6 +822,7 @@
             fetchSleepSummary();
             fetchNetworkStatus();
             window.setInterval(fetchNetworkStatus, NETWORK_STATUS_POLL_INTERVAL_MS);
+            window.setInterval(fetchSleepSummary, SLEEP_LOGS_POLL_INTERVAL_MS);
         });
     </script>
 </body>
