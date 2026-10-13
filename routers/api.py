@@ -21,7 +21,8 @@ CALENDAR_FEED_TIMEOUT_SECONDS = 10
 
 
 @router.get("/api/network-status")
-def get_network_status():
+def get_network_status(response: Response):
+    response.headers["Cache-Control"] = "no-store"
     with get_db_connection() as conn:
         row = conn.execute(
             "SELECT online, targets_json, updated_at FROM network_status WHERE id = 1"

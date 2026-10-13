@@ -22,7 +22,10 @@ def test_sleep_buttons_record_session_and_deficit(client):
     dashboard = client.get("/")
     assert dashboard.status_code == 200
     assert "Sleep & Schedule Hub" in dashboard.text
-    assert "Target IP availability" not in dashboard.text
+    assert "Target IP availability" in dashboard.text
+    assert 'id="network-status-badge"' in dashboard.text
+    assert 'id="network-target-list"' in dashboard.text
+    assert "fetch('/api/network-status'" in dashboard.text
     assert "Last 6 Days" in dashboard.text
     assert 'aria-label="Nighty Night"' in dashboard.text
     assert 'aria-label="Good Morning"' in dashboard.text
@@ -128,6 +131,7 @@ def test_morning_does_not_record_sleep_shorter_than_four_hours(client):
 def test_network_status_is_on_when_any_target_is_online(client):
     unknown = client.get("/api/network-status")
     assert unknown.status_code == 200
+    assert unknown.headers["cache-control"] == "no-store"
     assert unknown.json() == {
         "status": "UNKNOWN",
         "online": None,
@@ -148,7 +152,9 @@ def test_network_status_is_on_when_any_target_is_online(client):
     assert report.json()["status"] == "ON"
     assert report.json()["online"] is True
 
-    status = client.get("/api/network-status").json()
+    status_response = client.get("/api/network-status")
+    assert status_response.headers["cache-control"] == "no-store"
+    status = status_response.json()
     assert status["status"] == "ON"
     assert status["targets"] == [
         {"ip": "192.168.1.10", "online": False},

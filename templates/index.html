@@ -466,7 +466,7 @@
             const targetList = document.getElementById('network-target-list');
 
             try {
-                const response = await fetch('/api/network-status');
+                const response = await fetch('/api/network-status', { cache: 'no-store' });
                 if (!response.ok) {
                     throw new Error(`Status request failed (${response.status})`);
                 }
