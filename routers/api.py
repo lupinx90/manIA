@@ -180,17 +180,19 @@ def action_good_morning():
         if row["sleep_start_time"]:
             sleep_start = datetime.fromisoformat(row["sleep_start_time"])
             duration_hours = max(0, (wake_time - sleep_start).total_seconds() / 3600)
+            recorded = duration_hours >= 4
             duration_hours = round(duration_hours, 2)
             deficit_hours = round(max(0.0, MIN_DESIRED_SLEEP_HOURS - duration_hours), 2)
-            conn.execute(
-                "INSERT INTO sleep_logs (sleep_start, wake_time, duration_hours, deficit_hours, timestamp) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (row["sleep_start_time"], wake_str, duration_hours, deficit_hours, wake_str),
-            )
+            if recorded:
+                conn.execute(
+                    "INSERT INTO sleep_logs (sleep_start, wake_time, duration_hours, deficit_hours, timestamp) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (row["sleep_start_time"], wake_str, duration_hours, deficit_hours, wake_str),
+                )
             log_info = {
                 "duration_hours": duration_hours,
                 "deficit_hours": deficit_hours,
-                "recorded": True,
+                "recorded": recorded,
             }
 
         conn.execute(

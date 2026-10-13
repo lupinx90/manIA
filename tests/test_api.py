@@ -54,6 +54,23 @@ def test_morning_while_awake_does_not_create_sleep_log(client):
     assert client.get("/api/sleep-logs").json() == []
 
 
+def test_morning_does_not_record_sleep_shorter_than_four_hours(client):
+    client.post("/api/action/night")
+
+    with db.get_db_connection() as conn:
+        start = (datetime.now() - timedelta(hours=3.5)).isoformat()
+        conn.execute(
+            "UPDATE sleep_state SET sleep_start_time = ? WHERE id = 1",
+            (start,),
+        )
+
+    response = client.post("/api/action/morning")
+
+    assert response.json()["log"]["duration_hours"] < 4
+    assert response.json()["log"]["recorded"] is False
+    assert client.get("/api/sleep-logs").json() == []
+
+
 def test_network_status_is_on_when_any_target_is_online(client):
     unknown = client.get("/api/network-status")
     assert unknown.status_code == 200
