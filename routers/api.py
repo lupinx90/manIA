@@ -16,6 +16,7 @@ from schemas import EventCreate, NetworkStatusReport
 logger = logging.getLogger(__name__)
 router = APIRouter()
 MIN_DESIRED_SLEEP_HOURS = 7.5
+SLEEP_SUMMARY_DAYS = 6
 CALENDAR_FEED_TIMEOUT_SECONDS = 10
 
 
@@ -210,6 +211,55 @@ def get_sleep_logs():
             "FROM sleep_logs ORDER BY id DESC LIMIT 20"
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+@router.get("/api/sleep-summary")
+def get_sleep_summary():
+    today = datetime.now().date()
+    first_day = today - timedelta(days=SLEEP_SUMMARY_DAYS - 1)
+    days_by_date = {}
+    with get_db_connection() as conn:
+        rows = conn.execute(
+            "SELECT wake_time, duration_hours FROM sleep_logs "
+            "WHERE substr(wake_time, 1, 10) >= ? AND substr(wake_time, 1, 10) <= ? "
+            "ORDER BY wake_time",
+            (first_day.isoformat(), today.isoformat()),
+        ).fetchall()
+
+    for row in rows:
+        wake_date = date.fromisoformat(row["wake_time"][:10])
+        day = days_by_date.setdefault(wake_date, {"sleep_hours": 0.0})
+        day["sleep_hours"] += row["duration_hours"]
+
+    days = []
+    for offset in range(SLEEP_SUMMARY_DAYS):
+        current_date = first_day + timedelta(days=offset)
+        day = days_by_date.get(current_date)
+        sleep_hours = round(day["sleep_hours"], 2) if day else None
+        days.append({
+            "date": current_date.isoformat(),
+            "sleep_hours": sleep_hours,
+            "goal_met": sleep_hours >= MIN_DESIRED_SLEEP_HOURS if day else None,
+            "deficit_hours": (
+                round(max(0.0, MIN_DESIRED_SLEEP_HOURS - sleep_hours), 2)
+                if day else None
+            ),
+        })
+
+    tracked_days = [day for day in days if day["sleep_hours"] is not None]
+    return {
+        "goal_hours": MIN_DESIRED_SLEEP_HOURS,
+        "days": days,
+        "average_sleep_hours": (
+            round(sum(day["sleep_hours"] for day in tracked_days) / len(tracked_days), 2)
+            if tracked_days else None
+        ),
+        "goal_met_days": sum(day["goal_met"] for day in tracked_days),
+        "tracked_days": len(tracked_days),
+        "total_deficit_hours": round(
+            sum(day["deficit_hours"] for day in tracked_days), 2
+        ),
+    }
 
 
 @router.get("/api/events")
