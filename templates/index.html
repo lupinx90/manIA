@@ -389,6 +389,7 @@
         let selectedEventId = null;
         let recognition = null;
         let isListening = false;
+        const NETWORK_STATUS_POLL_INTERVAL_MS = 10000;
 
         // Sound Effects via Web Audio API (No external asset dependencies)
         function playAudioFeedback(type) {
@@ -456,6 +457,59 @@
                 updateUIState(data.state, data.sleep_start_time);
             } catch (err) {
                 console.error("Error fetching state:", err);
+            }
+        }
+
+        async function fetchNetworkStatus() {
+            const badge = document.getElementById('network-status-badge');
+            const subtext = document.getElementById('network-status-subtext');
+            const targetList = document.getElementById('network-target-list');
+
+            try {
+                const response = await fetch('/api/network-status');
+                if (!response.ok) {
+                    throw new Error(`Status request failed (${response.status})`);
+                }
+
+                const data = await response.json();
+                const state = data.online === true ? 'ON' : data.online === false ? 'OFF' : 'UNKNOWN';
+                const targets = Array.isArray(data.targets) ? data.targets : [];
+                const onlineCount = targets.filter(target => target.online).length;
+                const badgeStateClasses = {
+                    ON: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+                    OFF: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+                    UNKNOWN: 'bg-slate-700/50 text-slate-300 border-slate-600'
+                };
+
+                badge.innerText = state;
+                badge.className = `self-start px-3 py-1 text-sm font-bold rounded-full border ${badgeStateClasses[state]}`;
+                targetList.replaceChildren();
+
+                for (const target of targets) {
+                    const item = document.createElement('li');
+                    const targetState = target.online ? 'ON' : 'OFF';
+                    item.className = `rounded-lg border px-3 py-2 text-sm ${
+                        target.online
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                            : 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+                    }`;
+                    item.textContent = `${target.ip}: ${targetState}`;
+                    targetList.append(item);
+                }
+
+                if (state === 'UNKNOWN') {
+                    subtext.innerText = 'Waiting for ESP32 status report...';
+                } else {
+                    const targetLabel = targets.length === 1 ? 'target' : 'targets';
+                    const reportTime = data.updated_at
+                        ? new Date(data.updated_at).toLocaleString()
+                        : 'unknown';
+                    subtext.innerText =
+                        `${onlineCount} of ${targets.length} ${targetLabel} responding. Last report: ${reportTime}.`;
+                }
+            } catch (error) {
+                console.error('Network status request error:', error);
+                subtext.innerText = `Network status unavailable: ${error.message}`;
             }
         }
 
@@ -765,6 +819,8 @@
         window.addEventListener('DOMContentLoaded', () => {
             fetchCurrentState();
             fetchSleepSummary();
+            fetchNetworkStatus();
+            window.setInterval(fetchNetworkStatus, NETWORK_STATUS_POLL_INTERVAL_MS);
         });
     </script>
 </body>
