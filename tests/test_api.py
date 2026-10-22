@@ -29,6 +29,9 @@ def test_sleep_buttons_record_session_and_deficit(client):
     assert "Last 6 Days" in dashboard.text
     assert 'aria-label="Nighty Night"' in dashboard.text
     assert 'aria-label="Good Morning"' in dashboard.text
+    assert 'aria-label="Add 1 nap hour"' in dashboard.text
+    assert 'aria-label="Add 2 nap hours"' in dashboard.text
+    assert 'aria-label="Add 3 nap hours"' in dashboard.text
     assert "Log bedtime start timestamp" not in dashboard.text
     assert "Stop the sleep timer" not in dashboard.text
     assert client.get("/api/state").json()["state"] == "AWAKE"
@@ -97,6 +100,48 @@ def test_sleep_summary_handles_no_recorded_sleep(client):
     assert summary["tracked_days"] == 0
     assert summary["total_deficit_hours"] == 0
     assert all(day["sleep_hours"] is None for day in summary["days"])
+
+
+def test_naps_add_to_daily_sleep_summary_and_accumulate(client):
+    today = datetime.now().date()
+    wake_time = datetime.combine(today, datetime.min.time()).isoformat()
+    with db.get_db_connection() as conn:
+        conn.execute(
+            "INSERT INTO sleep_logs "
+            "(sleep_start, wake_time, duration_hours, deficit_hours, timestamp) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (wake_time, wake_time, 6.0, 1.5, wake_time),
+        )
+
+    assert client.post("/api/naps", json={"hours": 1}).status_code == 201
+    nap = client.post("/api/naps", json={"hours": 2})
+    assert nap.status_code == 201
+    assert nap.json()["nap_hours"] == 3.0
+
+    today_summary = client.get("/api/sleep-summary").json()["days"][-1]
+    assert today_summary["original_sleep_hours"] == 6.0
+    assert today_summary["nap_hours"] == 3.0
+    assert today_summary["sleep_hours"] == 9.0
+    assert today_summary["goal_met"] is True
+    assert today_summary["deficit_hours"] == 0.0
+
+
+def test_nap_only_day_is_included_in_sleep_summary(client):
+    assert client.post("/api/naps", json={"hours": 2}).status_code == 201
+
+    summary = client.get("/api/sleep-summary").json()
+    today = summary["days"][-1]
+
+    assert today["original_sleep_hours"] == 0.0
+    assert today["nap_hours"] == 2.0
+    assert today["sleep_hours"] == 2.0
+    assert today["deficit_hours"] == 5.5
+    assert summary["tracked_days"] == 1
+
+
+@pytest.mark.parametrize("hours", [0, 4, "1", None])
+def test_naps_reject_invalid_duration(client, hours):
+    assert client.post("/api/naps", json={"hours": hours}).status_code == 422
 
 
 def test_repeated_night_does_not_reset_sleep_start(client):

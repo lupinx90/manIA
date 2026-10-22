@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from icalendar import Calendar
 
 from db import get_db_connection
-from schemas import EventCreate, NetworkStatusReport
+from schemas import EventCreate, NapCreate, NetworkStatusReport
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -214,6 +214,28 @@ def get_sleep_logs():
     return [dict(row) for row in rows]
 
 
+@router.post("/api/naps", status_code=201)
+def create_nap(nap: NapCreate):
+    now = datetime.now()
+    nap_date = now.date().isoformat()
+    timestamp = now.isoformat()
+    with get_db_connection() as conn:
+        conn.execute(
+            "INSERT INTO nap_logs (nap_date, duration_hours, timestamp) VALUES (?, ?, ?)",
+            (nap_date, nap.hours, timestamp),
+        )
+        row = conn.execute(
+            "SELECT SUM(duration_hours) AS nap_hours FROM nap_logs WHERE nap_date = ?",
+            (nap_date,),
+        ).fetchone()
+    return {
+        "status": "success",
+        "date": nap_date,
+        "added_hours": nap.hours,
+        "nap_hours": row["nap_hours"],
+    }
+
+
 @router.get("/api/sleep-summary")
 def get_sleep_summary():
     today = datetime.now().date()
@@ -226,25 +248,52 @@ def get_sleep_summary():
             "ORDER BY wake_time",
             (first_day.isoformat(), today.isoformat()),
         ).fetchall()
+        nap_rows = conn.execute(
+            "SELECT nap_date, SUM(duration_hours) AS nap_hours FROM nap_logs "
+            "WHERE nap_date >= ? AND nap_date <= ? GROUP BY nap_date",
+            (first_day.isoformat(), today.isoformat()),
+        ).fetchall()
 
     for row in rows:
         wake_date = date.fromisoformat(row["wake_time"][:10])
-        day = days_by_date.setdefault(wake_date, {"sleep_hours": 0.0})
-        day["sleep_hours"] += row["duration_hours"]
+        day = days_by_date.setdefault(
+            wake_date,
+            {"original_sleep_hours": 0.0, "nap_hours": 0.0},
+        )
+        day["original_sleep_hours"] += row["duration_hours"]
+
+    for row in nap_rows:
+        nap_date = date.fromisoformat(row["nap_date"])
+        day = days_by_date.setdefault(
+            nap_date,
+            {"original_sleep_hours": 0.0, "nap_hours": 0.0},
+        )
+        day["nap_hours"] = row["nap_hours"]
 
     days = []
     for offset in range(SLEEP_SUMMARY_DAYS):
         current_date = first_day + timedelta(days=offset)
         day = days_by_date.get(current_date)
-        sleep_hours = round(day["sleep_hours"], 2) if day else None
+        if day:
+            original_sleep_hours = round(day["original_sleep_hours"], 2)
+            nap_hours = round(day["nap_hours"], 2)
+            sleep_hours = round(original_sleep_hours + nap_hours, 2)
+        else:
+            original_sleep_hours = None
+            nap_hours = None
+            sleep_hours = None
+        goal_met = sleep_hours is not None and sleep_hours >= MIN_DESIRED_SLEEP_HOURS
+        deficit_hours = (
+            round(max(0.0, MIN_DESIRED_SLEEP_HOURS - sleep_hours), 2)
+            if sleep_hours is not None else None
+        )
         days.append({
             "date": current_date.isoformat(),
             "sleep_hours": sleep_hours,
-            "goal_met": sleep_hours >= MIN_DESIRED_SLEEP_HOURS if day else None,
-            "deficit_hours": (
-                round(max(0.0, MIN_DESIRED_SLEEP_HOURS - sleep_hours), 2)
-                if day else None
-            ),
+            "original_sleep_hours": original_sleep_hours,
+            "nap_hours": nap_hours,
+            "goal_met": goal_met if day else None,
+            "deficit_hours": deficit_hours,
         })
 
     tracked_days = [day for day in days if day["sleep_hours"] is not None]

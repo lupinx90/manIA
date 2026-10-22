@@ -29,6 +29,14 @@ def init_db():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS nap_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nap_date TEXT NOT NULL,
+                duration_hours REAL NOT NULL,
+                timestamp TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS calendar_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,

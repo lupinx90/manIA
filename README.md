@@ -1,6 +1,6 @@
 # Sleep & Schedule Hub
 
-A local FastAPI dashboard for logging bedtime/wake-up times, tracking sleep deficit against a 7.5-hour goal, and viewing local events alongside a Google Calendar iCal feed.
+A local FastAPI dashboard for logging bedtime/wake-up times and 1-, 2-, or 3-hour naps, tracking combined daily sleep against a 7.5-hour goal, and viewing local events alongside a Google Calendar iCal feed.
 
 ## Run locally
 

@@ -1,7 +1,12 @@
 from datetime import datetime
 from ipaddress import IPv4Address
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+
+class NapCreate(BaseModel):
+    hours: Literal[1, 2, 3]
 
 
 class NetworkTargetStatus(BaseModel):

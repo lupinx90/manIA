@@ -224,6 +224,20 @@
                 </button>
             </div>
 
+            <section class="bg-cardbg border border-bordercolor rounded-2xl p-6 shadow-xl" aria-labelledby="nap-controls-title">
+                <h2 id="nap-controls-title" class="text-xl font-bold text-white">Log a nap</h2>
+                <p class="text-sm text-slate-400 mt-1">Add nap hours to today's sleep summary.</p>
+                <div class="flex flex-wrap gap-3 mt-4">
+                    <button onclick="logNap(1)" aria-label="Add 1 nap hour"
+                        class="px-5 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition">+1 hour</button>
+                    <button onclick="logNap(2)" aria-label="Add 2 nap hours"
+                        class="px-5 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition">+2 hours</button>
+                    <button onclick="logNap(3)" aria-label="Add 3 nap hours"
+                        class="px-5 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition">+3 hours</button>
+                </div>
+                <p id="nap-status" class="text-sm text-slate-400 mt-3" role="status" aria-live="polite"></p>
+            </section>
+
             <section class="bg-cardbg border border-bordercolor rounded-2xl p-6 shadow-xl" aria-labelledby="sleep-summary-title">
                 <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                     <div>
@@ -540,6 +554,14 @@
                     const value = document.createElement('p');
                     value.className = 'text-sm font-semibold text-white mt-2';
                     value.textContent = day.sleep_hours === null ? 'No log' : `${day.sleep_hours.toFixed(1)} h`;
+                    if (day.nap_hours > 0) {
+                        const napValue = document.createElement('p');
+                        napValue.className = 'text-xs text-indigo-300 mt-1';
+                        napValue.textContent = `${day.original_sleep_hours.toFixed(1)} h sleep + ${day.nap_hours.toFixed(1)} h naps`;
+                        item.append(date, value, napValue);
+                    } else {
+                        item.append(date, value);
+                    }
                     const track = document.createElement('div');
                     track.className = 'h-1.5 bg-slate-700 rounded-full mt-3 overflow-hidden';
                     const bar = document.createElement('div');
@@ -548,7 +570,7 @@
                         ? '0%'
                         : `${Math.min(day.sleep_hours / 10 * 100, 100)}%`;
                     track.append(bar);
-                    item.append(date, value, track);
+                    item.append(track);
                     dailySummary.append(item);
                 }
                 status.innerText = `${data.tracked_days} of ${data.days.length} days recorded`;
@@ -605,6 +627,24 @@
                 if (data.log) await fetchSleepSummary();
             } catch (e) {
                 console.error("Morning trigger error:", e);
+            }
+        }
+
+        async function logNap(hours) {
+            const status = document.getElementById('nap-status');
+            try {
+                const response = await fetch('/api/naps', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hours })
+                });
+                if (!response.ok) throw new Error(`Nap request failed (${response.status})`);
+                const data = await response.json();
+                status.innerText = `Added ${data.added_hours} nap hour${data.added_hours === 1 ? '' : 's'} today.`;
+                await fetchSleepSummary();
+            } catch (error) {
+                console.error('Nap logging request error:', error);
+                status.innerText = `Nap could not be recorded: ${error.message}`;
             }
         }
 
