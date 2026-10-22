@@ -11,50 +11,13 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from icalendar import Calendar
 
 from db import get_db_connection
-from schemas import EventCreate, NapCreate, NetworkStatusReport
+from schemas import EventCreate, NetworkStatusReport
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 MIN_DESIRED_SLEEP_HOURS = 7.5
 SLEEP_SUMMARY_DAYS = 6
 CALENDAR_FEED_TIMEOUT_SECONDS = 10
-AUTO_SLEEP_OFFLINE_THRESHOLD = timedelta(minutes=30)
-NAP_SLEEP_CUTOFF_HOURS = 4.0
-
-
-def _record_sleep_interval(conn, sleep_start_time, wake_time, auto_detected=False):
-    sleep_start = datetime.fromisoformat(sleep_start_time)
-    duration_hours = max(0, (wake_time - sleep_start).total_seconds() / 3600)
-    rounded_duration = round(duration_hours, 2)
-    deficit_hours = round(max(0.0, MIN_DESIRED_SLEEP_HOURS - rounded_duration), 2)
-    is_nap = auto_detected and duration_hours < NAP_SLEEP_CUTOFF_HOURS
-
-    if is_nap:
-        conn.execute(
-            "INSERT INTO nap_logs (nap_date, duration_hours, timestamp) VALUES (?, ?, ?)",
-            (wake_time.date().isoformat(), rounded_duration, wake_time.isoformat()),
-        )
-    elif duration_hours >= NAP_SLEEP_CUTOFF_HOURS:
-        conn.execute(
-            "INSERT INTO sleep_logs (sleep_start, wake_time, duration_hours, deficit_hours, timestamp) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (
-                sleep_start_time,
-                wake_time.isoformat(),
-                rounded_duration,
-                deficit_hours,
-                wake_time.isoformat(),
-            ),
-        )
-
-    return {
-        "duration_hours": rounded_duration,
-        "deficit_hours": deficit_hours,
-        "recorded": is_nap or duration_hours >= NAP_SLEEP_CUTOFF_HOURS,
-        "record_type": "nap" if is_nap else (
-            "sleep" if duration_hours >= NAP_SLEEP_CUTOFF_HOURS else None
-        ),
-    }
 
 
 @router.get("/api/network-status")
@@ -83,7 +46,6 @@ def get_network_status(response: Response):
 def report_network_status(report: NetworkStatusReport):
     targets = [target.model_dump(mode="json") for target in report.targets]
     online = any(target["online"] for target in targets)
-    now = datetime.now()
     updated_at = datetime.now(timezone.utc).isoformat()
     with get_db_connection() as conn:
         conn.execute(
@@ -93,59 +55,6 @@ def report_network_status(report: NetworkStatusReport):
             "targets_json = excluded.targets_json, updated_at = excluded.updated_at",
             (int(online), json.dumps(targets), updated_at),
         )
-        if targets:
-            monitor = conn.execute(
-                "SELECT offline_since, auto_sleep_start FROM presence_monitor WHERE id = 1"
-            ).fetchone()
-            sleep_state = conn.execute(
-                "SELECT state FROM sleep_state WHERE id = 1"
-            ).fetchone()
-
-            if online:
-                if monitor["auto_sleep_start"]:
-                    _record_sleep_interval(
-                        conn,
-                        monitor["auto_sleep_start"],
-                        now,
-                        auto_detected=True,
-                    )
-                    conn.execute(
-                        "UPDATE sleep_state SET state = 'AWAKE', sleep_start_time = NULL, "
-                        "last_updated = ? WHERE id = 1",
-                        (now.isoformat(),),
-                    )
-                    conn.execute(
-                        "UPDATE presence_monitor SET offline_since = NULL, auto_sleep_start = NULL "
-                        "WHERE id = 1"
-                    )
-                else:
-                    conn.execute(
-                        "UPDATE presence_monitor SET offline_since = NULL WHERE id = 1"
-                    )
-            else:
-                if sleep_state["state"] == "AWAKE":
-                    offline_since = monitor["offline_since"] or now.isoformat()
-                    offline_start = datetime.fromisoformat(offline_since)
-                    if now - offline_start >= AUTO_SLEEP_OFFLINE_THRESHOLD:
-                        conn.execute(
-                            "UPDATE sleep_state SET state = 'ASLEEP', sleep_start_time = ?, "
-                            "last_updated = ? WHERE id = 1",
-                            (offline_since, now.isoformat()),
-                        )
-                        conn.execute(
-                            "UPDATE presence_monitor SET offline_since = NULL, auto_sleep_start = ? "
-                            "WHERE id = 1",
-                            (offline_since,),
-                        )
-                    else:
-                        conn.execute(
-                            "UPDATE presence_monitor SET offline_since = ? WHERE id = 1",
-                            (offline_since,),
-                        )
-                else:
-                    conn.execute(
-                        "UPDATE presence_monitor SET offline_since = NULL WHERE id = 1"
-                    )
     return {
         "status": "ON" if online else "OFF",
         "online": online,
@@ -270,58 +179,46 @@ def action_good_morning():
         if row is None:
             raise HTTPException(status_code=500, detail="Sleep state has not been initialized.")
 
-        monitor = conn.execute(
-            "SELECT auto_sleep_start FROM presence_monitor WHERE id = 1"
-        ).fetchone()
         if row["sleep_start_time"]:
-            automatic_start = monitor["auto_sleep_start"]
-            log_info = _record_sleep_interval(
-                conn,
-                row["sleep_start_time"],
-                wake_time,
-                auto_detected=bool(automatic_start),
-            )
+            sleep_start = datetime.fromisoformat(row["sleep_start_time"])
+            duration_hours = max(0, (wake_time - sleep_start).total_seconds() / 3600)
+            recorded = duration_hours >= 4
+            duration_hours = round(duration_hours, 2)
+            deficit_hours = round(max(0.0, MIN_DESIRED_SLEEP_HOURS - duration_hours), 2)
+            if recorded:
+                conn.execute(
+                    "INSERT INTO sleep_logs (sleep_start, wake_time, duration_hours, deficit_hours, timestamp) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (row["sleep_start_time"], wake_str, duration_hours, deficit_hours, wake_str),
+                )
+            log_info = {
+                "duration_hours": duration_hours,
+                "deficit_hours": deficit_hours,
+                "recorded": recorded,
+            }
 
         conn.execute(
             "UPDATE sleep_state SET state = 'AWAKE', sleep_start_time = NULL, last_updated = ? WHERE id = 1",
             (wake_str,),
         )
-        conn.execute(
-            "UPDATE presence_monitor SET offline_since = NULL, auto_sleep_start = NULL WHERE id = 1"
-        )
     return {"status": "success", "state": "AWAKE", "wake_time": wake_str, "log": log_info}
 
 
 @router.get("/api/sleep-logs")
-def get_sleep_logs():
+def get_sleep_logs(limit: int | None = Query(default=None, ge=1)):
+    query = (
+        "SELECT id, sleep_start, wake_time, duration_hours, deficit_hours, timestamp "
+        "FROM sleep_logs ORDER BY timestamp DESC, id DESC"
+    )
+    params = []
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+
     with get_db_connection() as conn:
-        rows = conn.execute(
-            "SELECT id, sleep_start, wake_time, duration_hours, deficit_hours, timestamp "
-            "FROM sleep_logs ORDER BY id DESC LIMIT 20"
-        ).fetchall()
+        rows = conn.execute(query, params).fetchall()
+
     return [dict(row) for row in rows]
-
-
-@router.post("/api/naps", status_code=201)
-def create_nap(nap: NapCreate):
-    now = datetime.now()
-    nap_date = now.date().isoformat()
-    timestamp = now.isoformat()
-    with get_db_connection() as conn:
-        conn.execute(
-            "INSERT INTO nap_logs (nap_date, duration_hours, timestamp) VALUES (?, ?, ?)",
-            (nap_date, nap.hours, timestamp),
-        )
-        row = conn.execute(
-            "SELECT SUM(duration_hours) AS nap_hours FROM nap_logs WHERE nap_date = ?",
-            (nap_date,),
-        ).fetchone()
-    return {
-        "status": "success",
-        "date": nap_date,
-        "added_hours": nap.hours,
-        "nap_hours": row["nap_hours"],
-    }
 
 
 @router.get("/api/sleep-summary")
@@ -336,51 +233,36 @@ def get_sleep_summary():
             "ORDER BY wake_time",
             (first_day.isoformat(), today.isoformat()),
         ).fetchall()
-        nap_rows = conn.execute(
-            "SELECT nap_date, SUM(duration_hours) AS nap_hours FROM nap_logs "
-            "WHERE nap_date >= ? AND nap_date <= ? GROUP BY nap_date",
-            (first_day.isoformat(), today.isoformat()),
-        ).fetchall()
 
     for row in rows:
-        wake_date = date.fromisoformat(row["wake_time"][:10])
-        day = days_by_date.setdefault(
-            wake_date,
-            {"original_sleep_hours": 0.0, "nap_hours": 0.0},
-        )
-        day["original_sleep_hours"] += row["duration_hours"]
+        wake_time = row["wake_time"]
+        duration_hours = row["duration_hours"]
+        if not wake_time or duration_hours is None:
+            continue
 
-    for row in nap_rows:
-        nap_date = date.fromisoformat(row["nap_date"])
-        day = days_by_date.setdefault(
-            nap_date,
-            {"original_sleep_hours": 0.0, "nap_hours": 0.0},
-        )
-        day["nap_hours"] = row["nap_hours"]
+        try:
+            wake_date = date.fromisoformat(wake_time[:10])
+        except ValueError:
+            continue
+
+        day = days_by_date.setdefault(wake_date, {"sleep_hours": 0.0})
+        day["sleep_hours"] = round(day["sleep_hours"] + float(duration_hours), 2)
 
     days = []
     for offset in range(SLEEP_SUMMARY_DAYS):
         current_date = first_day + timedelta(days=offset)
         day = days_by_date.get(current_date)
-        if day:
-            original_sleep_hours = round(day["original_sleep_hours"], 2)
-            nap_hours = round(day["nap_hours"], 2)
-            sleep_hours = round(original_sleep_hours + nap_hours, 2)
-        else:
-            original_sleep_hours = None
-            nap_hours = None
-            sleep_hours = None
+        sleep_hours = round(day["sleep_hours"], 2) if day else None
         goal_met = sleep_hours is not None and sleep_hours >= MIN_DESIRED_SLEEP_HOURS
         deficit_hours = (
             round(max(0.0, MIN_DESIRED_SLEEP_HOURS - sleep_hours), 2)
-            if sleep_hours is not None else None
+            if sleep_hours is not None
+            else None
         )
         days.append({
             "date": current_date.isoformat(),
             "sleep_hours": sleep_hours,
-            "original_sleep_hours": original_sleep_hours,
-            "nap_hours": nap_hours,
-            "goal_met": goal_met if day else None,
+            "goal_met": goal_met,
             "deficit_hours": deficit_hours,
         })
 
@@ -392,10 +274,11 @@ def get_sleep_summary():
             round(sum(day["sleep_hours"] for day in tracked_days) / len(tracked_days), 2)
             if tracked_days else None
         ),
-        "goal_met_days": sum(day["goal_met"] for day in tracked_days),
+        "goal_met_days": sum(1 for day in tracked_days if day["goal_met"]),
         "tracked_days": len(tracked_days),
         "total_deficit_hours": round(
-            sum(day["deficit_hours"] for day in tracked_days), 2
+            sum(day["deficit_hours"] for day in tracked_days if day["deficit_hours"] is not None),
+            2,
         ),
     }
 
