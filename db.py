@@ -55,10 +55,21 @@ def init_db():
                 updated_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS presence_monitor (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                offline_since TEXT,
+                auto_sleep_start TEXT
+            )
+        """)
         conn.execute(
             "INSERT OR IGNORE INTO sleep_state (id, state, sleep_start_time, last_updated) "
             "VALUES (1, 'AWAKE', NULL, ?)",
             (datetime.now().isoformat(),),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO presence_monitor (id, offline_since, auto_sleep_start) "
+            "VALUES (1, NULL, NULL)"
         )
 
 @contextmanager

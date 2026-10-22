@@ -219,6 +219,110 @@ def test_network_status_is_off_when_no_targets_are_online(client):
     assert response.json()["online"] is False
 
 
+def test_network_status_infers_sleep_after_thirty_offline_minutes(client):
+    offline_report = {"targets": [{"ip": "192.168.1.10", "online": False}]}
+    assert client.post("/api/network-status", json=offline_report).status_code == 200
+
+    with db.get_db_connection() as conn:
+        offline_since = (datetime.now() - timedelta(minutes=31)).isoformat()
+        conn.execute(
+            "UPDATE presence_monitor SET offline_since = ? WHERE id = 1",
+            (offline_since,),
+        )
+
+    response = client.post("/api/network-status", json=offline_report)
+    assert response.status_code == 200
+    state = client.get("/api/state").json()
+    assert state["state"] == "ASLEEP"
+    assert state["sleep_start_time"] == offline_since
+
+
+def test_online_report_resets_continuous_offline_timer(client):
+    offline_report = {"targets": [{"ip": "192.168.1.10", "online": False}]}
+    online_report = {"targets": [{"ip": "192.168.1.10", "online": True}]}
+    client.post("/api/network-status", json=offline_report)
+
+    with db.get_db_connection() as conn:
+        old_offline_start = (datetime.now() - timedelta(minutes=25)).isoformat()
+        conn.execute(
+            "UPDATE presence_monitor SET offline_since = ? WHERE id = 1",
+            (old_offline_start,),
+        )
+
+    client.post("/api/network-status", json=online_report)
+    client.post("/api/network-status", json=offline_report)
+
+    with db.get_db_connection() as conn:
+        new_offline_start = conn.execute(
+            "SELECT offline_since FROM presence_monitor WHERE id = 1"
+        ).fetchone()["offline_since"]
+
+    assert new_offline_start is not None
+    assert datetime.fromisoformat(new_offline_start) > datetime.fromisoformat(
+        old_offline_start
+    )
+    assert client.get("/api/state").json()["state"] == "AWAKE"
+
+
+def test_network_recovery_records_automatic_short_sleep_as_nap(client):
+    offline_report = {"targets": [{"ip": "192.168.1.10", "online": False}]}
+    client.post("/api/network-status", json=offline_report)
+
+    with db.get_db_connection() as conn:
+        sleep_start = (datetime.now() - timedelta(minutes=45)).isoformat()
+        conn.execute(
+            "UPDATE presence_monitor SET offline_since = ? WHERE id = 1",
+            (sleep_start,),
+        )
+    client.post("/api/network-status", json=offline_report)
+    assert client.get("/api/state").json()["state"] == "ASLEEP"
+
+    response = client.post(
+        "/api/network-status",
+        json={"targets": [{"ip": "192.168.1.10", "online": True}]},
+    )
+    assert response.status_code == 200
+    assert client.get("/api/state").json()["state"] == "AWAKE"
+    assert client.get("/api/sleep-logs").json() == []
+    assert client.get("/api/sleep-summary").json()["days"][-1]["nap_hours"] == pytest.approx(
+        0.75, abs=0.02
+    )
+
+
+def test_network_recovery_records_automatic_long_sleep_as_sleep(client):
+    offline_report = {"targets": [{"ip": "192.168.1.10", "online": False}]}
+    client.post("/api/network-status", json=offline_report)
+
+    with db.get_db_connection() as conn:
+        sleep_start = (datetime.now() - timedelta(hours=5)).isoformat()
+        conn.execute(
+            "UPDATE presence_monitor SET offline_since = ? WHERE id = 1",
+            (sleep_start,),
+        )
+    client.post("/api/network-status", json=offline_report)
+    assert client.get("/api/state").json()["state"] == "ASLEEP"
+
+    response = client.post(
+        "/api/network-status",
+        json={"targets": [{"ip": "192.168.1.10", "online": True}]},
+    )
+    assert response.status_code == 200
+    assert client.get("/api/state").json()["state"] == "AWAKE"
+    assert client.get("/api/sleep-logs").json()[0]["duration_hours"] == pytest.approx(
+        5.0, abs=0.02
+    )
+
+
+def test_online_network_does_not_end_manual_sleep_session(client):
+    client.post("/api/action/night")
+    client.post(
+        "/api/network-status",
+        json={"targets": [{"ip": "192.168.1.10", "online": True}]},
+    )
+
+    assert client.get("/api/state").json()["state"] == "ASLEEP"
+
+
 def test_network_status_rejects_invalid_ip_addresses(client):
     response = client.post(
         "/api/network-status",

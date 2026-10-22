@@ -90,6 +90,8 @@ docker compose down --volumes
 
 The dashboard's **Network Status** panel reports **ON** when at least one configured target IP responds to ping and **OFF** when none respond. Before receiving a report it shows **UNKNOWN**. The ESP32 checks each target periodically and posts individual results to `/api/network-status`; manIA stores the latest report in its database.
 
+When every configured target reports offline continuously for 30 minutes, manIA automatically starts a sleep session if presence is currently **AWAKE**. When a target reports online, the app ends that automatically detected session and records intervals shorter than four hours as naps or longer intervals as overnight sleep. Manually started sleep sessions are not ended by network recovery. Automatic detection depends on receiving ESP32 reports (five minutes apart by default); a missing report alone does not count as an offline result.
+
 The ESP32 must reach manIA over your trusted local network. Docker Compose binds the web app to the manIA host's private LAN IP (`192.168.18.131` by default). If your host uses a different IP, set `MANIA_BIND_ADDRESS` to its private LAN IP in `.env`; this setting overrides the Compose default, so update any existing `127.0.0.1` value. Recreate the service with `docker compose up --build -d`. Configure the same manIA URL, target IPv4 addresses, and Wi-Fi credentials in the PlatformIO project at [`esp32_status_monitor/`](./esp32_status_monitor/). Do not bind this unauthenticated app to a public interface or expose it to the internet.
 
 ## Connect Google Calendar

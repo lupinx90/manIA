@@ -206,6 +206,7 @@
                         <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Target IP availability</p>
                         <h2 class="text-xl font-bold text-white mt-1">Network Status</h2>
                         <p id="network-status-subtext" class="text-sm text-slate-400 mt-1">Waiting for ESP32 status report...</p>
+                        <p class="text-xs text-slate-500 mt-2">All targets offline for 30 minutes starts automatic sleep tracking. A target coming online ends an automatic session; sessions under 4 hours count as naps.</p>
                     </div>
                     <span id="network-status-badge" class="self-start px-3 py-1 text-sm font-bold rounded-full bg-slate-700/50 text-slate-300 border border-slate-600">UNKNOWN</span>
                 </div>
@@ -470,8 +471,10 @@
                 const res = await fetch('/api/state');
                 const data = await res.json();
                 updateUIState(data.state, data.sleep_start_time);
+                return data.state;
             } catch (err) {
                 console.error("Error fetching state:", err);
+                return null;
             }
         }
 
@@ -490,6 +493,7 @@
                 const state = data.online === true ? 'ON' : data.online === false ? 'OFF' : 'UNKNOWN';
                 const targets = Array.isArray(data.targets) ? data.targets : [];
                 const onlineCount = targets.filter(target => target.online).length;
+                const presenceState = await fetchCurrentState();
                 const badgeStateClasses = {
                     ON: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
                     OFF: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
@@ -520,7 +524,7 @@
                         ? new Date(data.updated_at).toLocaleString()
                         : 'unknown';
                     subtext.innerText =
-                        `${onlineCount} of ${targets.length} ${targetLabel} responding. Last report: ${reportTime}.`;
+                        `${onlineCount} of ${targets.length} ${targetLabel} responding. Presence: ${presenceState || 'unknown'}. Last report: ${reportTime}.`;
                 }
             } catch (error) {
                 console.error('Network status request error:', error);
