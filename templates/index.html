@@ -183,7 +183,7 @@
                                 <span id="status-badge" class="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">AWAKE</span>
                             </div>
                             <h2 id="status-text" class="text-2xl font-bold text-white mt-1">Active & Monitoring</h2>
-                            <p id="status-subtext" class="text-xs text-slate-400 mt-1">ESP32-C3 node listening for local pings...</p>
+                            <p id="status-subtext" class="text-xs text-slate-400 mt-1">SecretarIA corriendo</p>
                         </div>
                     </div>
 
@@ -205,7 +205,7 @@
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Target IP availability</p>
                         <h2 class="text-xl font-bold text-white mt-1">Network Status</h2>
-                        <p id="network-status-subtext" class="text-sm text-slate-400 mt-1">Waiting for ESP32 status report...</p>
+                        <p id="network-status-subtext" class="text-sm text-slate-400 mt-1">SecretarIA en modo offline</p>
                         <p class="text-xs text-slate-500 mt-2">All targets offline for 30 minutes starts automatic sleep tracking. A target coming online ends an automatic session; sessions under 4 hours count as naps.</p>
                     </div>
                     <span id="network-status-badge" class="self-start px-3 py-1 text-sm font-bold rounded-full bg-slate-700/50 text-slate-300 border border-slate-600">UNKNOWN</span>
@@ -490,9 +490,10 @@
                 }
 
                 const data = await response.json();
-                const state = data.online === true ? 'ON' : data.online === false ? 'OFF' : 'UNKNOWN';
                 const targets = Array.isArray(data.targets) ? data.targets : [];
                 const onlineCount = targets.filter(target => target.online).length;
+                const hasAnyOnline = onlineCount > 0;
+                const state = targets.length === 0 ? 'UNKNOWN' : (hasAnyOnline ? 'ON' : 'OFF');
                 const presenceState = await fetchCurrentState();
                 const badgeStateClasses = {
                     ON: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
@@ -523,8 +524,10 @@
                     const reportTime = data.updated_at
                         ? new Date(data.updated_at).toLocaleString()
                         : 'unknown';
-                    subtext.innerText =
-                        `${onlineCount} of ${targets.length} ${targetLabel} responding. Presence: ${presenceState || 'unknown'}. Last report: ${reportTime}.`;
+                    const statusSummary = hasAnyOnline
+                        ? `${onlineCount} of ${targets.length} ${targetLabel} responding.`
+                        : `All ${targets.length} ${targetLabel} offline.`;
+                    subtext.innerText = `${statusSummary} Presence: ${presenceState || 'unknown'}. Last report: ${reportTime}.`;
                 }
             } catch (error) {
                 console.error('Network status request error:', error);

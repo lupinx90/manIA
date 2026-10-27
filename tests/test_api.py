@@ -139,9 +139,47 @@ def test_nap_only_day_is_included_in_sleep_summary(client):
     assert summary["tracked_days"] == 1
 
 
+def test_daily_nap_total_can_be_set_repeatedly_without_accumulating(client):
+    first = client.put("/api/naps", json={"hours": 1})
+    second = client.put("/api/naps", json={"hours": 3})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["nap_hours"] == 3
+
+    summary = client.get("/api/sleep-summary").json()
+    today = summary["days"][-1]
+    assert today["original_sleep_hours"] == 0.0
+    assert today["nap_hours"] == 3.0
+    assert today["sleep_hours"] == 3.0
+
+
+def test_daily_nap_total_is_added_to_recorded_sleep(client):
+    today = datetime.now().date()
+    wake_time = datetime.combine(today, datetime.min.time()).isoformat()
+    with db.get_db_connection() as conn:
+        conn.execute(
+            "INSERT INTO sleep_logs "
+            "(sleep_start, wake_time, duration_hours, deficit_hours, timestamp) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (wake_time, wake_time, 6.0, 1.5, wake_time),
+        )
+
+    response = client.put("/api/naps", json={"hours": 2})
+
+    assert response.status_code == 200
+    today_summary = client.get("/api/sleep-summary").json()["days"][-1]
+    assert today_summary["original_sleep_hours"] == 6.0
+    assert today_summary["nap_hours"] == 2.0
+    assert today_summary["sleep_hours"] == 8.0
+    assert today_summary["goal_met"] is True
+    assert today_summary["deficit_hours"] == 0.0
+
+
 @pytest.mark.parametrize("hours", [0, 4, "1", None])
 def test_naps_reject_invalid_duration(client, hours):
     assert client.post("/api/naps", json={"hours": hours}).status_code == 422
+    assert client.put("/api/naps", json={"hours": hours}).status_code == 422
 
 
 def test_repeated_night_does_not_reset_sleep_start(client):
