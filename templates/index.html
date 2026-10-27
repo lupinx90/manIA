@@ -343,7 +343,7 @@
                     <label class="block text-xs font-medium text-slate-400 mb-1">Category</label>
                     <select id="event-category" class="w-full bg-slate-900 border border-bordercolor rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
                         <option value="general">General</option>
-                        <option value="work">Work / ESP32</option>
+                        <option value="work">Work</option>
                         <option value="personal">Personal</option>
                         <option value="sleep">Sleep & Health</option>
                     </select>
@@ -518,7 +518,7 @@
                 }
 
                 if (state === 'UNKNOWN') {
-                    subtext.innerText = 'Waiting for ESP32 status report...';
+                    subtext.innerText = 'SecretarIA no te oye...';
                 } else {
                     const targetLabel = targets.length === 1 ? 'target' : 'targets';
                     const reportTime = data.updated_at
@@ -602,14 +602,14 @@
                 statusText.innerText = "Resting Mode Active";
                 
                 const startTimeStr = sleepStartTime ? new Date(sleepStartTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'N/A';
-                statusSubtext.innerText = `Sleep timer initiated at ${startTimeStr}. ESP32-C3 in low-activity log mode.`;
+                statusSubtext.innerText = `SecretarIA en reposo desde ${startTimeStr}. En modo de registro de baja actividad.`;
             } else {
                 iconContainer.className = "w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-2xl transition-all duration-300";
                 icon.className = "fa-solid fa-sun";
                 badge.className = "px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
                 badge.innerText = "AWAKE";
                 statusText.innerText = "Active & Monitoring";
-                statusSubtext.innerText = "ESP32-C3 node listening for local network pings...";
+                statusSubtext.innerText = "Adelante, secretarIA te escucha...";
             }
         }
 
