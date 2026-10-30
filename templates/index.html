@@ -206,7 +206,7 @@
                         <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Target IP availability</p>
                         <h2 class="text-xl font-bold text-white mt-1">Network Status</h2>
                         <p id="network-status-subtext" class="text-sm text-slate-400 mt-1">SecretarIA en modo offline</p>
-                        <p class="text-xs text-slate-500 mt-2">All targets offline for 30 minutes starts automatic sleep tracking. A target coming online ends an automatic session; sessions under 4 hours count as naps.</p>
+                        <p class="text-xs text-slate-500 mt-2">All targets offline for 30 minutes starts automatic sleep tracking from the beginning of the offline period. A target coming online ends an automatic session; sessions under 4 hours count as naps rounded to 1, 2, or 3 hours.</p>
                     </div>
                     <span id="network-status-badge" class="self-start px-3 py-1 text-sm font-bold rounded-full bg-slate-700/50 text-slate-300 border border-slate-600">UNKNOWN</span>
                 </div>
@@ -560,15 +560,24 @@
                     });
                     const value = document.createElement('p');
                     value.className = 'text-sm font-semibold text-white mt-2';
-                    value.textContent = day.sleep_hours === null ? 'No log' : `${day.sleep_hours.toFixed(1)} h`;
                     if (day.nap_hours > 0) {
-                        const napValue = document.createElement('p');
-                        napValue.className = 'text-xs text-indigo-300 mt-1';
-                        napValue.textContent = `${day.original_sleep_hours.toFixed(1)} h sleep + ${day.nap_hours.toFixed(1)} h naps`;
-                        item.append(date, value, napValue);
+                        const napValue = document.createElement('span');
+                        napValue.className = 'text-indigo-300';
+                        napValue.textContent = day.nap_hours.toFixed(0);
+                        value.append(
+                            document.createTextNode(`${day.original_sleep_hours.toFixed(1)}h + `),
+                            napValue
+                        );
+                        value.setAttribute(
+                            'aria-label',
+                            `${day.original_sleep_hours.toFixed(1)} hours sleep plus ${day.nap_hours} nap hours`
+                        );
                     } else {
-                        item.append(date, value);
+                        value.textContent = day.sleep_hours === null
+                            ? 'No log'
+                            : `${day.sleep_hours.toFixed(1)}h`;
                     }
+                    item.append(date, value);
                     const track = document.createElement('div');
                     track.className = 'h-1.5 bg-slate-700 rounded-full mt-3 overflow-hidden';
                     const bar = document.createElement('div');

@@ -18,6 +18,8 @@ router = APIRouter()
 MIN_DESIRED_SLEEP_HOURS = 7.5
 SLEEP_SUMMARY_DAYS = 6
 CALENDAR_FEED_TIMEOUT_SECONDS = 10
+AUTO_SLEEP_OFFLINE_THRESHOLD = timedelta(minutes=30)
+MIN_RECORDED_SLEEP_HOURS = 4
 
 
 @router.get("/api/network-status")
@@ -47,6 +49,8 @@ def report_network_status(report: NetworkStatusReport):
     targets = [target.model_dump(mode="json") for target in report.targets]
     online = any(target["online"] for target in targets)
     updated_at = datetime.now(timezone.utc).isoformat()
+    now = datetime.now()
+    now_str = now.isoformat()
     with get_db_connection() as conn:
         conn.execute(
             "INSERT INTO network_status (id, online, targets_json, updated_at) "
@@ -55,6 +59,79 @@ def report_network_status(report: NetworkStatusReport):
             "targets_json = excluded.targets_json, updated_at = excluded.updated_at",
             (int(online), json.dumps(targets), updated_at),
         )
+
+        monitor = conn.execute(
+            "SELECT offline_since, auto_sleep_start FROM presence_monitor WHERE id = 1"
+        ).fetchone()
+        if monitor is None:
+            raise HTTPException(status_code=500, detail="Presence monitor has not been initialized.")
+
+        state = conn.execute(
+            "SELECT state FROM sleep_state WHERE id = 1"
+        ).fetchone()
+        if state is None:
+            raise HTTPException(status_code=500, detail="Sleep state has not been initialized.")
+
+        if online:
+            conn.execute(
+                "UPDATE presence_monitor SET offline_since = NULL WHERE id = 1"
+            )
+            if monitor["auto_sleep_start"]:
+                sleep_start = datetime.fromisoformat(monitor["auto_sleep_start"])
+                duration_hours = max(0, (now - sleep_start).total_seconds() / 3600)
+                if duration_hours >= MIN_RECORDED_SLEEP_HOURS:
+                    duration_hours = round(duration_hours, 2)
+                    deficit_hours = round(
+                        max(0.0, MIN_DESIRED_SLEEP_HOURS - duration_hours), 2
+                    )
+                    conn.execute(
+                        "INSERT INTO sleep_logs "
+                        "(sleep_start, wake_time, duration_hours, deficit_hours, timestamp) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (
+                            monitor["auto_sleep_start"],
+                            now_str,
+                            duration_hours,
+                            deficit_hours,
+                            now_str,
+                        ),
+                    )
+                else:
+                    nap_hours = min(3, max(1, int(duration_hours + 0.5)))
+                    conn.execute(
+                        "INSERT INTO nap_logs (nap_date, duration_hours, timestamp) "
+                        "VALUES (?, ?, ?)",
+                        (now.date().isoformat(), nap_hours, now_str),
+                    )
+
+                conn.execute(
+                    "UPDATE sleep_state SET state = 'AWAKE', sleep_start_time = NULL, "
+                    "last_updated = ? WHERE id = 1",
+                    (now_str,),
+                )
+                conn.execute(
+                    "UPDATE presence_monitor SET auto_sleep_start = NULL WHERE id = 1"
+                )
+        elif targets:
+            offline_since = monitor["offline_since"] or now_str
+            conn.execute(
+                "UPDATE presence_monitor SET offline_since = ? WHERE id = 1",
+                (offline_since,),
+            )
+            if (
+                state["state"] == "AWAKE"
+                and now - datetime.fromisoformat(offline_since) >= AUTO_SLEEP_OFFLINE_THRESHOLD
+            ):
+                conn.execute(
+                    "UPDATE sleep_state SET state = 'ASLEEP', sleep_start_time = ?, "
+                    "last_updated = ? WHERE id = 1",
+                    (offline_since, now_str),
+                )
+                conn.execute(
+                    "UPDATE presence_monitor SET auto_sleep_start = ? WHERE id = 1",
+                    (offline_since,),
+                )
+
     return {
         "status": "ON" if online else "OFF",
         "online": online,
@@ -164,6 +241,9 @@ def action_good_night():
             "UPDATE sleep_state SET state = 'ASLEEP', sleep_start_time = ?, last_updated = ? WHERE id = 1",
             (start_time, now),
         )
+        conn.execute(
+            "UPDATE presence_monitor SET auto_sleep_start = NULL WHERE id = 1"
+        )
     return {"status": "success", "state": "ASLEEP", "sleep_start": start_time}
 
 
@@ -182,7 +262,7 @@ def action_good_morning():
         if row["sleep_start_time"]:
             sleep_start = datetime.fromisoformat(row["sleep_start_time"])
             duration_hours = max(0, (wake_time - sleep_start).total_seconds() / 3600)
-            recorded = duration_hours >= 4
+            recorded = duration_hours >= MIN_RECORDED_SLEEP_HOURS
             duration_hours = round(duration_hours, 2)
             deficit_hours = round(max(0.0, MIN_DESIRED_SLEEP_HOURS - duration_hours), 2)
             if recorded:
@@ -200,6 +280,10 @@ def action_good_morning():
         conn.execute(
             "UPDATE sleep_state SET state = 'AWAKE', sleep_start_time = NULL, last_updated = ? WHERE id = 1",
             (wake_str,),
+        )
+        conn.execute(
+            "UPDATE presence_monitor SET offline_since = NULL, auto_sleep_start = NULL "
+            "WHERE id = 1"
         )
     return {"status": "success", "state": "AWAKE", "wake_time": wake_str, "log": log_info}
 

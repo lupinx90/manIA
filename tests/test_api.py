@@ -322,9 +322,28 @@ def test_network_recovery_records_automatic_short_sleep_as_nap(client):
     assert response.status_code == 200
     assert client.get("/api/state").json()["state"] == "AWAKE"
     assert client.get("/api/sleep-logs").json() == []
-    assert client.get("/api/sleep-summary").json()["days"][-1]["nap_hours"] == pytest.approx(
-        0.75, abs=0.02
+    assert client.get("/api/sleep-summary").json()["days"][-1]["nap_hours"] == 1
+
+
+def test_automatic_nap_rounding_includes_offline_grace_period(client):
+    offline_report = {"targets": [{"ip": "192.168.1.10", "online": False}]}
+    client.post("/api/network-status", json=offline_report)
+
+    with db.get_db_connection() as conn:
+        offline_since = (datetime.now() - timedelta(hours=2, minutes=40)).isoformat()
+        conn.execute(
+            "UPDATE presence_monitor SET offline_since = ? WHERE id = 1",
+            (offline_since,),
+        )
+
+    client.post("/api/network-status", json=offline_report)
+    response = client.post(
+        "/api/network-status",
+        json={"targets": [{"ip": "192.168.1.10", "online": True}]},
     )
+
+    assert response.status_code == 200
+    assert client.get("/api/sleep-summary").json()["days"][-1]["nap_hours"] == 3
 
 
 def test_network_recovery_records_automatic_long_sleep_as_sleep(client):
@@ -352,6 +371,27 @@ def test_network_recovery_records_automatic_long_sleep_as_sleep(client):
 
 
 def test_online_network_does_not_end_manual_sleep_session(client):
+    client.post("/api/action/night")
+    client.post(
+        "/api/network-status",
+        json={"targets": [{"ip": "192.168.1.10", "online": True}]},
+    )
+
+    assert client.get("/api/state").json()["state"] == "ASLEEP"
+
+
+def test_manual_night_during_automatic_sleep_is_not_ended_by_network_recovery(client):
+    offline_report = {"targets": [{"ip": "192.168.1.10", "online": False}]}
+    client.post("/api/network-status", json=offline_report)
+
+    with db.get_db_connection() as conn:
+        offline_since = (datetime.now() - timedelta(minutes=31)).isoformat()
+        conn.execute(
+            "UPDATE presence_monitor SET offline_since = ? WHERE id = 1",
+            (offline_since,),
+        )
+
+    client.post("/api/network-status", json=offline_report)
     client.post("/api/action/night")
     client.post(
         "/api/network-status",
